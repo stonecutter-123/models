@@ -1,0 +1,115 @@
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ========== 场景初始化 ==========
+const container = document.getElementById('canvas-container');
+const loading = document.getElementById('loading');
+
+// 渲染器
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+container.appendChild(renderer.domElement);
+
+// 场景
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+
+// 相机
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(5, 3, 5);
+camera.lookAt(0, 0, 0);
+
+// 光照
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const light1 = new THREE.DirectionalLight(0xffffff, 1.2);
+light1.position.set(5, 10, 5);
+scene.add(light1);
+const light2 = new THREE.DirectionalLight(0x4488ff, 0.4);
+light2.position.set(-3, 1, -3);
+scene.add(light2);
+
+// ========== 交互控制（手机优化） ==========
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 1.5;
+controls.maxDistance = 15;
+controls.maxPolarAngle = Math.PI * 0.75;
+controls.touches = {
+  ONE: THREE.TOUCH.ROTATE,
+  TWO: THREE.TOUCH.DOLLY_PAN
+};
+
+// ========== 加载模型 ==========
+const loader = new GLTFLoader();
+loader.load(
+  './models/model.glb',  // ← 模型路径
+  (gltf) => {
+    const model = gltf.scene;
+    
+    // 自动居中
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    
+    model.position.sub(center);
+    controls.target.set(0, size.y / 2, 0);
+    
+    // 调整相机距离
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = camera.fov * (Math.PI / 180);
+    const dist = maxDim / (2 * Math.tan(fov / 2)) * 1.5;
+    camera.position.set(dist * 0.8, dist * 0.6, dist);
+    camera.lookAt(0, size.y / 2, 0);
+    
+    scene.add(model);
+    loading.style.display = 'none';
+    window.model = model; // 方便调试
+  },
+  (progress) => {
+    if (progress.total > 0) {
+      const pct = Math.round((progress.loaded / progress.total) * 100);
+      loading.textContent = `加载中 ${pct}%`;
+    }
+  },
+  (error) => {
+    loading.textContent = '加载失败: ' + error.message;
+    console.error(error);
+  }
+);
+
+// ========== 动画循环 ==========
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ========== 窗口调整 ==========
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// 阻止iOS橡皮筋
+document.addEventListener('touchmove', (e) => {
+  if (e.target.closest('#canvas-container')) e.preventDefault();
+}, { passive: false });
+
+// ========== 按钮 ==========
+document.getElementById('btn-rotate').addEventListener('click', function() {
+  controls.autoRotate = !controls.autoRotate;
+  this.textContent = controls.autoRotate ? '⏸️' : '🔄';
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  controls.target.set(0, 0, 0);
+  camera.position.set(5, 3, 5);
+  camera.lookAt(0, 0, 0);
+  controls.update();
+});
